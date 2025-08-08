@@ -1,10 +1,11 @@
 from planner.training_plan import get_next_planned_run
 from planner.past_runs import fetch_recent_runs
-from planner.pace_estimator import estimate_run_duration
-from planner.route_generator import (geocode_address,
-                                     build_two_calibrated_loops,
-                                     get_two_loops_link_and_lengths)
-from utils import round_up_minutes, format_pace
+from planner.pace_estimator import get_estimated_performance
+from planner.route_generator import generate_and_print_loops_plan, geocode_address
+from planner.weather_checker import fetch_hourly_forecast, extract_day_forecast
+
+from datetime import datetime, date
+
 
 def main():
     # 1. Load environment variables & config
@@ -30,60 +31,57 @@ def main():
               f"{r['average_speed_kmh']:>4.1f} km/h  {r['pace_str']}")        
         pass
 
-    # 4. Estimate pace and run duration
-    est_minutes = estimate_run_duration(run["distance_km"], past_runs)
-    total_block = round_up_minutes(est_minutes + 30)  # +30 min buffer
-    pace_min_per_km = est_minutes / run["distance_km"]
-
-    print("\n=== Estimated Performance ===")
-    print(f"Estimated pace       : {format_pace(pace_min_per_km)} min/km")
-    print(f"Estimated run time   : {est_minutes:.0f} min")
-    print(f"Calendar block (+30) : {total_block} min")
+        # 4. Estimate pace and run duration
+    get_estimated_performance(run["distance_km"], past_runs)
 
     # 5. Generate a route for the planned distance
-    planned_km = run["distance_km"]      # e.g., 24
-    target_loop_km = 6.2                 # ~6–7 km is your preference
-
     start_address = input("Start address: ").strip()
-    bearing = float(input("Initial direction (deg, 0=N, 90=E, 180=S, 270=W): "))
-
     start_latlng = geocode_address(start_address)
 
-    waypoints, loopA_km, loopB_km = build_two_calibrated_loops(
-        start_lat=start_latlng[0],
-        start_lng=start_latlng[1],
-        target_loop_km=target_loop_km,
-        initial_bearing_deg=bearing,
-    )
+    generate_and_print_loops_plan(start_latlng, run["distance_km"])
 
-    link, a_km, b_km, total_ab_km = get_two_loops_link_and_lengths(start=start_latlng, waypoints=waypoints)
-
-    cycle_km = a_km + b_km
-    full_cycles = int(planned_km // cycle_km)
-    remainder = planned_km - full_cycles * cycle_km
-
-    print("\n=== Loops (calibrated) ===")
-    print(f"Loop A: {a_km:.2f} km")
-    print(f"Loop B: {b_km:.2f} km")
-    print(f"A+B   : {cycle_km:.2f} km")
-
-    print("\n=== Suggested plan ===")
-    if full_cycles > 0:
-        print(f"Run {full_cycles}×: A → B")
-    if remainder > 0.4:
-        extra = 'A' if abs(remainder - a_km) < abs(remainder - b_km) else 'B'
-        print(f"Then add one extra loop: {extra}")
-    else:
-        print("No extra loop needed; you’ll be very close to plan.")
-
-    print("\nGoogle Maps route (A then B):")
-    print(link)
     # 6. Fetch weather forecast
+    weather_data = fetch_hourly_forecast(start_latlng[0], start_latlng[1])
 
-    # 7. Choose best time to run
+    if isinstance(run["date"], date):
+        run_date = run["date"]
+    else:
+        run_date = datetime.strptime(run["date"], "%Y-%m-%d").date()
+    day_forecast = extract_day_forecast(weather_data, run_date)
 
-    # 8. Create Google Calendar entry with buffer
+    print(f"\n=== Weather Forecast | {run_date} ===")
+    for slot in day_forecast:
+        print(f"{slot['time']} - {slot['temp']}°C (feels {slot['feels_like']}°C), "
+            f"Wind {slot['wind']} m/s, Rain {slot['rain_prob']:.0f}%")
+    
+    # 7. Get Google Calendar and Constraints
+
+    # 8. Ask Gemini To Plan the best time for my run
+
+    # 9. Create Google Calendar entry with buffer
 
 
 if __name__ == "__main__":
     main()
+
+
+"""
+Yes — that’s exactly where this starts tipping into *agentic AI* territory.
+
+Right now your planner is **reactive** — you give it the run distance and date, and it spits out loops + weather.
+If you let an LLM **decide the best run start time** based on your weather forecast, your calendar, and maybe personal constraints (e.g., no running before coffee), you’ve turned it into an **autonomous decision-maker** for part of your plan.
+
+Concretely, you could:
+
+1. **Fetch hourly forecast** for the run day.
+2. **Pull constraints** (e.g., "only between 6:00 and 20:00", “avoid >25°C”, “rain prob <30%”, "I prefer mornings").
+3. **Feed all that into the LLM** with instructions like:
+
+   > “Pick the best 1–2 hour window for my run that minimizes wind, temperature extremes, and rain probability.”
+4. **Have it return** the start time, confidence, and a short reasoning (so you understand the trade-offs it made).
+5. **Optionally**: automatically add the event to Google Calendar.
+
+At that point your LLM isn’t just generating text — it’s interpreting data, weighing trade-offs, and making a choice, which is exactly what agentic AI is about.
+
+If you want, I can help you design that **"weather → reasoning → time suggestion"** prompt and the code glue so your planner just… decides.
+"""

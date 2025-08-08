@@ -197,14 +197,58 @@ def get_two_loops_link_and_lengths(
     total_km = loopA_km + loopB_km
 
     # Construct a shareable Google Maps link
+
+    encoded_wp_str = "%7C".join(f"{lat},{lng}" for lat, lng in waypoints)
+
     maps_url = (
         "https://www.google.com/maps/dir/?api=1"
         f"&origin={origin}"
         f"&destination={destination}"
         f"&travelmode=walking"
-        f"&waypoints={wp_str}"
+        f"&waypoints={encoded_wp_str}"
     )
     return maps_url, loopA_km, loopB_km, total_km
+
+
+def generate_and_print_loops_plan(start_latlng, planned_km: float, target_loop_km: float = 6.2):
+    """
+    Interactively asks for start address and bearing, builds 2 calibrated loops,
+    and prints a suggested run plan + Google Maps link.
+    """
+    bearing = float(input("Initial direction (deg, 0=N, 90=E, 180=S, 270=W): "))
+
+    waypoints, loopA_km, loopB_km = build_two_calibrated_loops(
+        start_lat=start_latlng[0],
+        start_lng=start_latlng[1],
+        target_loop_km=target_loop_km,
+        initial_bearing_deg=bearing,
+    )
+
+    link, a_km, b_km, _ = get_two_loops_link_and_lengths(start=start_latlng, waypoints=waypoints)
+
+    cycle_km = a_km + b_km
+    full_cycles = int(planned_km // cycle_km)
+    remainder = planned_km - full_cycles * cycle_km
+
+    print("\n=== Loops (calibrated) ===")
+    print(f"Loop A: {a_km:.2f} km")
+    print(f"Loop B: {b_km:.2f} km")
+    print(f"A+B   : {cycle_km:.2f} km")
+
+    print("\n=== Suggested plan ===")
+    if full_cycles > 0:
+        print(f"Run {full_cycles}×: A → B")
+    if remainder > 0.4:
+        extra = 'A' if abs(remainder - a_km) < abs(remainder - b_km) else 'B'
+        print(f"Then add one extra loop: {extra}")
+    else:
+        print("No extra loop needed; you’ll be very close to plan.")
+
+    print("\nGoogle Maps route (A then B):")
+    print(link)
+
+
+
 
 
 # NOTE: If the remainder after full A+B cycles is less than a full loop

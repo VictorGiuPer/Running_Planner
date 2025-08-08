@@ -1,5 +1,6 @@
 # planner/pace_estimator.py
 from statistics import median
+from utils import round_up_minutes, format_pace
 
 def _min_per_km(distance_km, moving_time_min):
     """
@@ -51,3 +52,15 @@ def estimate_run_duration(distance_km, past_runs, window_ratio=0.3):
         est_pace = median(pool)
 
     return est_pace * distance_km  # minutes
+
+
+def get_estimated_performance(planned_km: float, past_runs: list[dict]):
+    """Estimate pace, run time, and calendar block, then print them."""
+    est_minutes = estimate_run_duration(planned_km, past_runs)
+    total_block = round_up_minutes(est_minutes + 30)  # +30 min buffer
+    pace_min_per_km = est_minutes / planned_km
+
+    print("\n=== Estimated Performance ===")
+    print(f"Estimated pace       : {format_pace(pace_min_per_km)}")
+    print(f"Estimated run time   : {est_minutes:.0f} min")
+    print(f"Calendar block (+30) : {total_block} min")
