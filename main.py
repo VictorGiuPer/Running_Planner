@@ -38,7 +38,7 @@ def main():
     print(f"Calendar block (+30) : {total_block} min")
 
     # 5. Generate a route for the planned distance
-
+    
     # 6. Fetch weather forecast
 
     # 7. Choose best time to run
