@@ -1,6 +1,9 @@
 from planner.training_plan import get_next_planned_run
 from planner.past_runs import fetch_recent_runs
 from planner.pace_estimator import estimate_run_duration
+from planner.route_generator import (geocode_address,
+                                     build_two_calibrated_loops,
+                                     get_two_loops_link_and_lengths)
 from utils import round_up_minutes, format_pace
 
 def main():
@@ -38,7 +41,43 @@ def main():
     print(f"Calendar block (+30) : {total_block} min")
 
     # 5. Generate a route for the planned distance
-    
+    planned_km = run["distance_km"]      # e.g., 24
+    target_loop_km = 6.2                 # ~6–7 km is your preference
+
+    start_address = input("Start address: ").strip()
+    bearing = float(input("Initial direction (deg, 0=N, 90=E, 180=S, 270=W): "))
+
+    start_latlng = geocode_address(start_address)
+
+    waypoints, loopA_km, loopB_km = build_two_calibrated_loops(
+        start_lat=start_latlng[0],
+        start_lng=start_latlng[1],
+        target_loop_km=target_loop_km,
+        initial_bearing_deg=bearing,
+    )
+
+    link, a_km, b_km, total_ab_km = get_two_loops_link_and_lengths(start=start_latlng, waypoints=waypoints)
+
+    cycle_km = a_km + b_km
+    full_cycles = int(planned_km // cycle_km)
+    remainder = planned_km - full_cycles * cycle_km
+
+    print("\n=== Loops (calibrated) ===")
+    print(f"Loop A: {a_km:.2f} km")
+    print(f"Loop B: {b_km:.2f} km")
+    print(f"A+B   : {cycle_km:.2f} km")
+
+    print("\n=== Suggested plan ===")
+    if full_cycles > 0:
+        print(f"Run {full_cycles}×: A → B")
+    if remainder > 0.4:
+        extra = 'A' if abs(remainder - a_km) < abs(remainder - b_km) else 'B'
+        print(f"Then add one extra loop: {extra}")
+    else:
+        print("No extra loop needed; you’ll be very close to plan.")
+
+    print("\nGoogle Maps route (A then B):")
+    print(link)
     # 6. Fetch weather forecast
 
     # 7. Choose best time to run
